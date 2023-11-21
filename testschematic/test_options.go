@@ -98,6 +98,9 @@ type TestSchematicOptions struct {
 	// Format: "terraform_v1.x"
 	TerraformVersion string
 
+	// If you want to skip test setup and teardown use these
+	SkipTestTearDown bool
+
 	// Use this optional list to provide .netrc credentials that will be used by schematics to access any private git repos accessed by
 	// the project.
 	//

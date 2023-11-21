@@ -5,6 +5,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/gruntwork-io/terratest/modules/logger"
 	"github.com/stretchr/testify/assert"
 	"github.com/terraform-ibm-modules/ibmcloud-terratest-wrapper/common"
 )
@@ -165,23 +166,45 @@ func (options *TestSchematicOptions) RunSchematicTest() error {
 	return nil
 }
 
+// Function to destroy all resources. Resources are not destroyed if tests failed and "DO_NOT_DESTROY_ON_FAILURE" environment variable is true.
+// If options.ImplicitDestroy is set then these resources from the State file are removed to allow implicit destroy.
+func (svc *SchematicsTestService) TestTearDown(options *TestSchematicOptions) {
+	oldTearDownValue := options.SkipTestTearDown
+	options.SkipTestTearDown = false
+	defer testTearDown(svc, options)
+	options.SkipTestTearDown = oldTearDownValue
+}
+
 // testTearDown is a helper function, typically called via golang "defer", that will clean up and remove any existing resources that were
 // created for the test.
 // The removal of some resources may be influenced by certain conditions or optional settings.
 func testTearDown(svc *SchematicsTestService, options *TestSchematicOptions) {
-	// ------ DELETE WORKSPACE ------
-	// only delete workspace if one of these is true:
-	// * terraform hasn't been started yet
-	// * no failures
-	// * failed and DeleteWorkspaceOnFail is true
-	if !svc.TerraformTestStarted ||
-		!options.Testing.Failed() ||
-		(options.Testing.Failed() && options.DeleteWorkspaceOnFail) {
+	// Get the output of the last terraform apply
+	// NOTE: this is done before the destroy so that the output is available for debugging
+	var outputErr error
 
-		options.Testing.Log("[SCHEMATICS] Deleting Workspace")
-		_, deleteWsErr := svc.DeleteWorkspace()
-		if deleteWsErr != nil {
-			options.Testing.Logf("[SCHEMATICS] WARNING: Schematics WORKSPACE DELETE failed! Remove manually if required. Name: %s (%s)", svc.WorkspaceName, svc.WorkspaceID)
-		}
+	if outputErr != nil {
+		logger.Log(options.Testing, "failed to get terraform output: ", outputErr)
 	}
+
+	if !options.SkipTestTearDown {
+		// ------ DELETE WORKSPACE ------
+		// only delete workspace if one of these is true:
+		// * terraform hasn't been started yet
+		// * no failures
+		// * failed and DeleteWorkspaceOnFail is true
+		if !svc.TerraformTestStarted ||
+			!options.Testing.Failed() ||
+			(options.Testing.Failed() && options.DeleteWorkspaceOnFail) {
+
+			options.Testing.Log("[SCHEMATICS] Deleting Workspace")
+			_, deleteWsErr := svc.DeleteWorkspace()
+			if deleteWsErr != nil {
+				options.Testing.Logf("[SCHEMATICS] WARNING: Schematics WORKSPACE DELETE failed! Remove manually if required. Name: %s (%s)", svc.WorkspaceName, svc.WorkspaceID)
+			}
+		}
+	} else {
+		logger.Log(options.Testing, "Skipping automatic Test Teardown")
+	}
+
 }
